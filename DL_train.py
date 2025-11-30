@@ -811,19 +811,32 @@ def p_losses(
 
 def partition_data():
     all_paths = glob.glob(os.path.join(TEXTURE_DIR, "*"))
+    all_paths = [p for p in all_paths 
+                 if os.path.isfile(p) 
+                 and p.lower().endswith(('.png', '.jpg', '.jpeg', '.dds'))]
+    
+    # CRITICAL: Use fixed seed for reproducible splits
+    random.seed(42)
     random.shuffle(all_paths)
-    train_portion = .8
-    val_portion = .1
-    test_portion = .1
-    train_size = math.floor(len(all_paths) * train_portion)
-    val_size = math.floor(len(all_paths) * val_portion)
-    test_size = math.floor(len(all_paths) * test_portion)
+    random.seed(None)  # Reset seed after shuffling
+    
+    # Calculate split sizes
+    total = len(all_paths)
+    train_size = int(total * 0.8)
+    val_size = int(total * 0.1)
+    # test_size is the remainder
+    
+    # Split the paths
+    train_paths = all_paths[:train_size]
+    val_paths = all_paths[train_size:train_size + val_size]
+    test_paths = all_paths[train_size + val_size:]
+    
+    # Create datasets
     train_ds = PatchTextureDataset(
         root_dir=TEXTURE_DIR,
         patch_size=PATCH_SIZE,
         patches_per_image=PATCHES_PER_IMAGE,
-        max_images=train_size,
-        paths=all_paths[:train_size],
+        paths=train_paths,
         cache_in_memory=CACHE_IMAGES_IN_MEMORY,
     )
 
@@ -831,16 +844,18 @@ def partition_data():
         root_dir=TEXTURE_DIR,
         patch_size=PATCH_SIZE,
         patches_per_image=PATCHES_PER_IMAGE,
-        paths=all_paths[train_size:(val_size+train_size)],
+        paths=val_paths,
         cache_in_memory=CACHE_IMAGES_IN_MEMORY,
     )
+    
     test_ds = PatchTextureDataset(
         root_dir=TEXTURE_DIR,
         patch_size=PATCH_SIZE,
         patches_per_image=PATCHES_PER_IMAGE,
-        paths=all_paths[val_size+train_size:],
+        paths=test_paths,
         cache_in_memory=CACHE_IMAGES_IN_MEMORY,
     )
+    
     return train_ds, val_ds, test_ds
 
 
