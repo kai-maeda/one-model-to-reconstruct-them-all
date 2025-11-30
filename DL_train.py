@@ -813,8 +813,8 @@ def partition_data():
     all_paths = glob.glob(os.path.join(TEXTURE_DIR, "*"))
     random.shuffle(all_paths)
     train_portion = .8
-    val_portion = .2
-    test_portion = 0
+    val_portion = .1
+    test_portion = .1
     train_size = math.floor(len(all_paths) * train_portion)
     val_size = math.floor(len(all_paths) * val_portion)
     test_size = math.floor(len(all_paths) * test_portion)
