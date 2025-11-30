@@ -812,8 +812,8 @@ def p_losses(
 def partition_data():
     all_paths = glob.glob(os.path.join(TEXTURE_DIR, "*"))
     random.shuffle(all_paths)
-    train_portion = .9
-    val_portion = .1
+    train_portion = .8
+    val_portion = .2
     test_portion = 0
     train_size = math.floor(len(all_paths) * train_portion)
     val_size = math.floor(len(all_paths) * val_portion)

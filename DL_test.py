@@ -5,6 +5,7 @@ from torchvision.utils import save_image
 from torchvision import transforms
 from tqdm import tqdm
 from PIL import Image
+from DL_train import partition_data
 import glob
 import random
 import math
@@ -47,13 +48,8 @@ def load_model(model_path):
 
 # Test dataset preparation
 def prepare_test_dataset():
-    # Assuming that you want to test patches from the same dataset format as training
-    test_ds = PatchTextureDataset(
-        root_dir=TEXTURE_DIR,
-        patch_size=PATCH_SIZE,
-        patches_per_image=1,  # Just 1 patch per image for testing
-        max_images=10  # Change to your desired number of test images
-    )
+    # Directly use the partition_data function to get the test dataset
+    _, _, test_ds = partition_data()
     return DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, drop_last=False)
 
 # Calculate PSNR, SSIM, LPIPS (You can add the relevant LPIPS and SSIM implementations here)
