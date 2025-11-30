@@ -36,7 +36,6 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 TEXTURE_DIRS = {
     "NORMALS": "png_input/normals/",
     "PLANTS": "png_input/diffuse/organized_textures/nature_foliage/",
-    "SNOW": "png_input/diffuse/organized_textures/snow_ice/",
     "ARCHIT": "png_input/diffuse/organized_textures/stone_masonry/",
     "TERRAIN": "png_input/diffuse/organized_textures/terrain_dirt/",
     "CLOTHING": "png_input/diffuse/organized_textures/armors/"
