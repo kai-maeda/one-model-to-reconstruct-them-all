@@ -8,60 +8,18 @@ import lpips
 from skimage.metrics import structural_similarity as ssim
 import numpy as np
 import argparse
+import re, glob, os
 
-from DL_train import (
-    TextureUNet, 
-    PatchTextureDataset, 
-    get_timestep_from_noise_level, 
-    add_noise_level,
-    partition_data, 
-    sample_from_partial,
-    alpha_hat,
-    TIMESTEPS,
-    TEXTURE_DIR,
-    MAX_IMAGES,
-    PATCH_SIZE,
-    PATCHES_PER_IMAGE,
-    CACHE_IMAGES_IN_MEMORY,
-    MAX_TRAINING_NOISE_LEVEL
-)
+
 
 # Configuration
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', type=str, help="the data key of the set. EX: ARCHIT for architecture textures.")
 args = parser.parse_args()
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-TEXTURE_DIRS = {
-    "NORMALS": "png_input/normals/",
-    "PLANTS": "png_input/diffuse/organized_textures/nature_foliage/",
-    "ARCHIT": "png_input/diffuse/organized_textures/stone_masonry/",
-    "TERRAIN": "png_input/diffuse/organized_textures/terrain_dirt/",
-    "CLOTHING": "png_input/diffuse/organized_textures/armors/"
-}
-TEXTURE_DIR = TEXTURE_DIRS[args.d]
-
-SAVE_DIR = f"diffusion_run/{args.d}/"
-MODEL_PATH = os.path.join(SAVE_DIR, "model", "texture_diffusion.pth")  # Fixed path
-RESULTS_DIR = f"results_test_{args.d}/"
-os.makedirs(RESULTS_DIR, exist_ok=True)
-
-# Parameters for testing
-BATCH_SIZE = 4
-CHANNELS = 128
-
-# Load the trained model
-def load_model(model_path):
-    print(f"Loading model from {model_path}")
-    model = TextureUNet(in_ch=3, base_ch=CHANNELS).to(DEVICE)
-    model.load_state_dict(torch.load(model_path, map_location=DEVICE))
-    model.eval()
-    print("Model loaded successfully!")
-    return model
 
 # Test dataset preparation
-def prepare_test_dataset():
+def prepare_test_dataset(TEXTURE_DIR, PATCH_SIZE, BATCH_SIZE):
     """Create test dataset from the texture directory"""
     import glob
     import random
@@ -134,7 +92,7 @@ def calculate_ssim_batch(img1_batch, img2_batch):
     return np.mean(ssim_scores)
 
 # Calculate metrics
-def calculate_metrics(model, dataloader, lpips_fn):
+def calculate_metrics(model, dataloader, lpips_fn, DEVICE, MAX_TRAINING_NOISE_LEVEL,add_noise_level,get_timestep_from_noise_level,sample_from_partial, cosine_beta_schedule,TIMESTEPS,RESULTS_DIR ):
     """Calculate PSNR, SSIM, and LPIPS metrics"""
     psnr_list = []
     ssim_list = []
@@ -148,13 +106,17 @@ def calculate_metrics(model, dataloader, lpips_fn):
             xk_batch = add_noise_level(x0, MAX_TRAINING_NOISE_LEVEL)
             
             # Get timestep
+            betas = cosine_beta_schedule(TIMESTEPS).to(DEVICE)
+            alphas = 1.0 - betas
+            alpha_hat = torch.cumprod(alphas, dim=0)
+
             k = get_timestep_from_noise_level(
-                MAX_TRAINING_NOISE_LEVEL, 
-                alpha_hat, 
-                TIMESTEPS
+                torch.tensor(MAX_TRAINING_NOISE_LEVEL).to(DEVICE), 
+                alpha_hat
             )
             
             # Denoise
+            print(type(model))
             x_denoised = sample_from_partial(model, xk_batch, k)
             
             # Calculate PSNR for each image in batch
@@ -172,7 +134,7 @@ def calculate_metrics(model, dataloader, lpips_fn):
             
             # Save comparison images for first few batches
             if batch_idx < 5:
-                save_comparisons(x0, xk_batch, x_denoised, batch_idx)
+                save_comparisons(x0, xk_batch, x_denoised, batch_idx,RESULTS_DIR)
     
     # Return average metrics
     avg_psnr = np.mean(psnr_list)
@@ -182,7 +144,7 @@ def calculate_metrics(model, dataloader, lpips_fn):
     return avg_psnr, avg_ssim, avg_lpips
 
 # Save comparison images
-def save_comparisons(x0_batch, xk_batch, x_denoised, batch_idx):
+def save_comparisons(x0_batch, xk_batch, x_denoised, batch_idx, RESULTS_DIR):
     """Save side-by-side comparison of ground truth, degraded, and reconstructed"""
     all_imgs = torch.cat([
         (x0_batch + 1) / 2,      # Ground truth (clean)
@@ -200,24 +162,21 @@ def save_comparisons(x0_batch, xk_batch, x_denoised, batch_idx):
         print("  Row 3: Reconstruction")
 
 # Main function for testing
-def test():
+def test(model,TEXTURE_DIR, PATCH_SIZE, BATCH_SIZE,DEVICE,MODEL_DIR,MAX_TRAINING_NOISE_LEVEL,add_noise_level,get_timestep_from_noise_level,sample_from_partial,  cosine_beta_schedule,TIMESTEPS,RESULTS_DIR):
     print("=" * 60)
     print("TEXTURE DIFFUSION MODEL - TESTING")
     print("=" * 60)
     print(f"Device: {DEVICE}")
-    print(f"Model Path: {MODEL_PATH}")
+    print(f"Model Path: {MODEL_DIR}")
     print(f"Noise Level: {MAX_TRAINING_NOISE_LEVEL}")
     print(f"Results Directory: {RESULTS_DIR}")
     print("=" * 60)
     
     # Check if model exists
-    if not os.path.exists(MODEL_PATH):
-        print(f"ERROR: Model not found at {MODEL_PATH}")
+    if not os.path.exists(MODEL_DIR):
+        print(f"ERROR: Model not found at {MODEL_DIR}")
         print("Please train the model first!")
         return
-    
-    # Load the trained model
-    model = load_model(MODEL_PATH)
     
     # Initialize LPIPS
     print("Initializing LPIPS metric...")
@@ -225,7 +184,7 @@ def test():
     
     # Prepare the test dataset
     print("Preparing test dataset...")
-    test_dl = prepare_test_dataset()
+    test_dl = prepare_test_dataset(TEXTURE_DIR, PATCH_SIZE, BATCH_SIZE)
     
     if len(test_dl.dataset) == 0:
         print("ERROR: No test images found!")
@@ -233,7 +192,7 @@ def test():
     
     # Calculate metrics
     print("\nCalculating metrics...")
-    avg_psnr, avg_ssim, avg_lpips = calculate_metrics(model, test_dl, lpips_fn)
+    avg_psnr, avg_ssim, avg_lpips = calculate_metrics(model, test_dl, lpips_fn, DEVICE, MAX_TRAINING_NOISE_LEVEL,add_noise_level,get_timestep_from_noise_level,sample_from_partial,  cosine_beta_schedule,TIMESTEPS,RESULTS_DIR)
     
     # Print results
     print("\n" + "=" * 60)
@@ -246,5 +205,5 @@ def test():
     print(f"\nComparison images saved to: {RESULTS_DIR}")
     print("Testing completed!")
 
-if __name__ == "__main__":
-    test()
+# if __name__ == "__main__":
+#     test()
